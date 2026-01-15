@@ -28,6 +28,7 @@ struct IterationMetadata {
     double chi2;
     double lambda;
     int levenbergIter;
+    double average_error;
 };
 
 void rough_calib(const std::vector<DetectCorner>& detected_corners,
@@ -140,16 +141,27 @@ void graph_optim(const std::vector<DetectCorner>& detected_corners,
         std::vector<IterationMetadata>& iter_metadata) {
     using Block = g2o::BlockSolver<g2o::BlockSolverTraits<6, 6>>;
     // 初始化g2o优化器
+    // Block::LinearSolverType* linear_solver =
+    //     new g2o::LinearSolverEigen<Block::PoseMatrixType>();
+
+    // auto* block_solver = new Block(linear_solver);
+
+    // auto* algorithm =
+    //     new g2o::OptimizationAlgorithmLevenberg(block_solver);
+
+    // auto* optimizer = new g2o::SparseOptimizer();
+    // optimizer->setAlgorithm(algorithm);
+    // optimizer->setVerbose(false);
     std::unique_ptr<Block::LinearSolverType> linear_solver_ptr;  // 线性求解器指针
     std::unique_ptr<Block> block_solver_ptr;  // 块求解器指针
-    std::shared_ptr<g2o::OptimizationAlgorithm> opt_solver_ptr;  // 优化器solver指针
+    std::unique_ptr<g2o::OptimizationAlgorithm> opt_solver_ptr;  // 优化器solver指针
     std::unique_ptr<g2o::SparseOptimizer> optimizer_ptr;  // 优化器指针
 
     linear_solver_ptr = std::make_unique<g2o::LinearSolverEigen<Block::PoseMatrixType>>();
     block_solver_ptr = std::make_unique<Block>(std::move(linear_solver_ptr));
-    opt_solver_ptr = std::make_shared<g2o::OptimizationAlgorithmLevenberg>(std::move(block_solver_ptr));
+    opt_solver_ptr = std::make_unique<g2o::OptimizationAlgorithmLevenberg>(std::move(block_solver_ptr));
     optimizer_ptr = std::make_unique<g2o::SparseOptimizer>();
-    optimizer_ptr->setAlgorithm(opt_solver_ptr.get());
+    optimizer_ptr->setAlgorithm(opt_solver_ptr.release());
     // optimizer_ptr->setVerbose(true);
     optimizer_ptr->setVerbose(false);
 
@@ -319,15 +331,18 @@ void graph_optim(const std::vector<DetectCorner>& detected_corners,
 
         double lambda = lm->currentLambda();
         int lm_iter = lm->levenbergIteration();
+        double average_error = std::sqrt(chi2 / edge_dim / edge_id_count);
         IterationMetadata meta;
         meta.iteration = i;
         meta.chi2 = chi2;
         meta.lambda = lambda;
         meta.levenbergIter = lm_iter;
+        meta.average_error = average_error;
         iter_metadata.push_back(meta);
         std::cout << "Iteration " << i << ": chi2 = " << chi2
                   << ", lambda = " << lambda
-                  << ", LM iteration = " << lm_iter << std::endl;
+                  << ", LM iteration = " << lm_iter
+                  << ", average error = " << average_error << std::endl;
     }
     // 提取优化后的外参
     for (int cam_id = 1; cam_id < camera_count; ++cam_id) {
@@ -345,6 +360,7 @@ void dump_calib_result(const std::string& filename,
         const std::vector<ExternalParam>& external_params,
         const std::vector<ExternalParam>& rough_external_params) {
     YAML::Emitter out;
+
     out << YAML::BeginMap;
 
     out << YAML::Key << "internal_params" << YAML::Value << YAML::BeginSeq;
@@ -353,15 +369,19 @@ void dump_calib_result(const std::string& filename,
         out << YAML::Key << "id" << YAML::Value << iparam.id;
         out << YAML::Key << "intrinsic" << YAML::Value << YAML::BeginSeq;
         for (int i = 0; i < 3; ++i) {
+            out << YAML::Flow << YAML::BeginSeq;
             for (int j = 0; j < 3; ++j) {
                 out << iparam.intrinsic(i, j);
             }
+            out << YAML::EndSeq;
         }
         out << YAML::EndSeq;
         out << YAML::Key << "dist_coeffs" << YAML::Value << YAML::BeginSeq;
+        out << YAML::Flow << YAML::BeginSeq;
         for (int i = 0; i < 5; ++i) {
             out << iparam.dist_coeffs(i);
         }
+        out << YAML::EndSeq;
         out << YAML::EndSeq;
         out << YAML::EndMap;
     }
@@ -374,17 +394,21 @@ void dump_calib_result(const std::string& filename,
         out << YAML::Key << "child_id" << YAML::Value << eparam.child_id;
         out << YAML::Key << "T_father_child" << YAML::Value << YAML::BeginSeq;
         for (int i = 0; i < 4; ++i) {
+            out << YAML::Flow << YAML::BeginSeq;
             for (int j = 0; j < 4; ++j) {
                 out << eparam.T(i, j);
             }
+            out << YAML::EndSeq;
         }
         out << YAML::EndSeq;
         out << YAML::Key << "T_father_child_rough" << YAML::Value << YAML::BeginSeq;
         for (int i = 0; i < 4; ++i) {
+            out << YAML::Flow << YAML::BeginSeq;
             for (int j = 0; j < 4; ++j) {
                 out << rough_external_params
                     .at(eparam.father_id - 1).T(i, j);
             }
+            out << YAML::EndSeq;
         }
         out << YAML::EndSeq;
         out << YAML::EndMap;
