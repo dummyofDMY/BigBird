@@ -1,0 +1,6 @@
+"corner_out_path": "output/corners.yaml"
+"camera_count": 4
+"calib_result_path": "output/calib_result.yaml"
+"corner_edge_length": 0.01
+"corner_size": [12, 7]  # [x, y]
+optim_iterations: 5
