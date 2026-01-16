@@ -8,6 +8,12 @@ find_package(OpenCV REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(Threads REQUIRED)
 find_package(g2o REQUIRED)
+find_package(Eigen3 REQUIRED)
+
+message(STATUS "OpenCV version: ${OpenCV_VERSION}")
+message(STATUS "Eigen version: ${EIGEN3_VERSION}")
+message(STATUS "yaml-cpp version: ${YAML_CPP_VERSION}")
+message(STATUS "g2o version: ${G2O_VERSION}")
 
 add_executable(detect_corner
 	src/DetectCorner.cpp

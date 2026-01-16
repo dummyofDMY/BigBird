@@ -9,8 +9,6 @@
 #include "Camera.hpp"
 #include "CornerData.hpp"
 
-#define CAMERA_COUNT 4
-
 static std::atomic<bool> g_stop_requested{false};
 
 static void handle_sigint(int)
@@ -38,7 +36,8 @@ int main(int argc, char** argv) {
     }
 
     std::string corner_out_path = root_path + '/' + config["corner_out_path"].as<std::string>();
-    int camera_count = config["camera_count"] ? config["camera_count"].as<int>() : CAMERA_COUNT;
+    int camera_count = config["camera_count"].as<int>();
+    int rotation_flag = config["image_rotation"].as<int>();
 
     std::vector<std::vector<int>> edge_count(camera_count, std::vector<int>(camera_count, 0));
 
@@ -46,9 +45,24 @@ int main(int argc, char** argv) {
     std::signal(SIGINT, handle_sigint);
     bool do_not_save = false;
     try {
-        std::vector<std::unique_ptr<Camera>> cameras;
+        std::map<int, std::unique_ptr<Camera>> cameras;
+        std::vector<int> camera_ids;
+        int id_count = 0;
         for (int i = 0; i < camera_count; ++i) {
-            cameras.emplace_back(std::make_unique<Camera>(i * 2));
+            int cam_id = config["camera_params"][i]["id"].as<int>();
+            int width = config["camera_params"][i]["width"].as<int>();
+            int height = config["camera_params"][i]["height"].as<int>();
+            int fps = config["camera_params"][i]["fps"].as<int>();
+            std::string fourcc = config["camera_params"][i]["fourcc"].as<std::string>();
+            cameras.emplace(cam_id, std::make_unique<Camera>(cam_id, width, height, fps, fourcc, rotation_flag));
+            // camera_id_remap[cam_id] = id_count++;
+            camera_ids.push_back(cam_id);
+        }
+
+        std::sort(camera_ids.begin(), camera_ids.end());
+        std::map<int, int> camera_id_remap;
+        for (size_t i = 0; i < camera_ids.size(); ++i) {
+            camera_id_remap[camera_ids[i]] = static_cast<int>(i);
         }
 
         int key_input = 0;
@@ -58,12 +72,13 @@ int main(int argc, char** argv) {
         {
             if ('g' == key_input || 'G' == key_input) {
                 std::vector<DetectCorner> now_detected_corners;
-                for (int camera_id = 0; camera_id < camera_count; ++camera_id) {
-                    std::vector<cv::Point2f> corners = cameras[camera_id]->get_corner();
+                for (auto& cam_pair : cameras) {
+                    int camera_id = cam_pair.first;
+                    std::vector<cv::Point2f> corners = cam_pair.second->get_corner();
                     if (!corners.empty()) {
                         DetectCorner dc;
                         dc.id = now_id;
-                        dc.camera_id = camera_id;
+                        dc.camera_id = camera_id_remap[camera_id];
                         dc.corners.assign(corners.begin(), corners.end());
                         now_detected_corners.push_back(dc);
                     }
@@ -81,7 +96,7 @@ int main(int argc, char** argv) {
                             // edge_count[id2][id1]++;
                         }
                     }
-                    for (int i = 0; i < camera_count; ++i) {
+                    for (int i = 0; i < static_cast<int>(now_detected_corners.size()); ++i) {
                         int id = now_detected_corners[i].camera_id;
                         edge_count[id][id]++; // 自己到自己的边，表示该相机检测到的次数
                     }

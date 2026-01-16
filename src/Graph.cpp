@@ -46,6 +46,12 @@ void MainObserveEdge::computeError() {
         image_points_eigen(2 * i + 1) = image_points[i].y;
     }
     _error = image_points_eigen - _measurement;
+    // 检查错误值是否为 NaN
+    for (int i = 0; i < _error.size(); ++i) {
+        if (std::isnan(_error(i)) || std::isinf(_error(i))) {
+            std::cerr << "Error value is NaN or Inf at index " << i << std::endl;
+        }
+    }
 }
 
 SubObserveEdge::SubObserveEdge(int dim,
@@ -93,4 +99,10 @@ void SubObserveEdge::computeError() {
         image_points_eigen(2 * i + 1) = image_points[i].y;
     }
     _error = image_points_eigen - _measurement;
+    // 检查错误值是否为 NaN
+    for (int i = 0; i < _error.size(); ++i) {
+        if (std::isnan(_error(i)) || std::isinf(_error(i))) {
+            std::cerr << "Error value is NaN or Inf at index " << i << std::endl;
+        }
+    }
 }

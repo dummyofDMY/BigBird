@@ -15,7 +15,12 @@ void Camera::capture_and_visualize() {
                 cv::waitKey(15);
                 continue;
             }
-            cv::rotate(frame, frame, cv::ROTATE_90_CLOCKWISE);
+            if (rotation_flag_ == 0)
+                cv::rotate(frame, frame, cv::ROTATE_90_CLOCKWISE);
+            else if (rotation_flag_ == 1)
+                cv::rotate(frame, frame, cv::ROTATE_180);
+            else if (rotation_flag_ == 2)
+                cv::rotate(frame, frame, cv::ROTATE_90_COUNTERCLOCKWISE);
             
             // // 更新当前帧（加锁保护）
             // {
@@ -77,8 +82,8 @@ void Camera::capture_and_visualize() {
         std::cout << "相机线程结束" << std::endl;
     }
 
-Camera::Camera(int id) :
-    is_running_(true), new_corner_available_(false), corner_need_update_(false), id_(id) {
+Camera::Camera(int id, int width, int height, int fps, std::string fourcc, int rotation_flag) :
+    is_running_(true), new_corner_available_(false), corner_need_update_(false), id_(id), rotation_flag_(rotation_flag) {
         std::cout << "相机对象" << id_ << "创建" << std::endl;
 
         // 获取相机
@@ -90,10 +95,12 @@ Camera::Camera(int id) :
         }
 
         // 设置相机参数
-        cap_.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'));
-        cap_.set(cv::CAP_PROP_FRAME_WIDTH, 800);
-        cap_.set(cv::CAP_PROP_FRAME_HEIGHT, 600);
-        cap_.set(cv::CAP_PROP_FPS, 60);
+        int fourcc_code = cv::VideoWriter::fourcc(
+            fourcc[0], fourcc[1], fourcc[2], fourcc[3]);
+        cap_.set(cv::CAP_PROP_FOURCC, fourcc_code);
+        cap_.set(cv::CAP_PROP_FRAME_WIDTH, width);
+        cap_.set(cv::CAP_PROP_FRAME_HEIGHT, height);
+        cap_.set(cv::CAP_PROP_FPS, fps);
         
         // 启动图像采集线程
         capture_thread_ = std::thread(&Camera::capture_and_visualize, this);
@@ -123,6 +130,11 @@ std::vector<cv::Point2f> Camera::get_corner() {
     std::cout << "相机" << id_ << "未找到角点" << std::endl;
     return std::vector<cv::Point2f>();  // 返回空向量
 }
+
+// cv::Mat Camera::get_visualize_frame() {
+//     std::lock_guard<std::mutex> lock(image_mutex_);
+//     return current_frame.clone();
+// }
 
 void Camera::stop() {
     if (is_running_.load()) {
