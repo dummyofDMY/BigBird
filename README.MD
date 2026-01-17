@@ -134,7 +134,7 @@ bash scripts/solve_param.bash
 
 ## 棋盘格角点数据格式
 
-实际为一个字典，字典格式为：
+实际为一个列表，其元素为字典，表示每一张图片的识别结果，字典格式为：
 
 ```python
 dic{id:int, camera_id:int, corners:List[List[]]}
@@ -145,6 +145,26 @@ dic{id:int, camera_id:int, corners:List[List[]]}
 | id | 帧id，不要求连续 |
 | camera_id | 相机序号 |
 | corners | 识别到的角点 |
+
+一个正确的`corners.yaml`的例子如下，注意需要把它放在`output`文件夹下程序才能找到。
+
+```yaml
+- id: 0
+  camera_id: 0
+  corners:
+    - [171.703308, 605.984375]
+    - [167.304123, 565.771973]
+    ...
+    - [373.035278, 139.042175]
+- id: 1
+  camera_id: 0
+  corners:
+    - [318.778137, 521.173035]
+    - [315.91626, 491.984863]
+    ...
+    - [457.876984, 196.106903]
+...
+```
 
 ## 相机编号
 
