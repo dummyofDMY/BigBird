@@ -9,6 +9,18 @@
 This project is designed for multi-camera RGB calibration, applicable to **any** number of cameras. It uses **graph optimization** to compute the global camera extrinsic parameters.  
 The calibration pattern used is a chessboard. Currently, only a USB camera interface is provided. For other types of cameras, you need to save the detected chessboard corners as `corners.yaml`. For details, see [Chessboard Corner Data Format](#chessboard-corner-data-format).
 
+## Comparison with Other Open-Source Projects
+
+This project shares the same objective as `Kalibr`, but our code offers the following advantages:
+
+- `Kalibr` requires that **all** cameras must simultaneously observe the calibration board in each keyframe. We eliminate this restriction by utilizing graph optimization.
+- Our project has minimal dependencies and does not require environments like ROS.
+
+Currently, the limitations of our project are as follows:
+
+- Our data structure does not include timestamps. Users need to manage the synchronization of the cameras themselves.
+- Currently, we have only adapted the code for single camera model, and the corner detection code is also only compatible with USB cameras.
+
 ## Methods
 
 First, the intrinsic parameters of each camera are calculated using `OpenCV`. Then, the intrinsic parameters are fixed, and the initial extrinsic parameters are computed using `OpenCV`'s stereo calibration. Finally, graph optimization is performed.  
