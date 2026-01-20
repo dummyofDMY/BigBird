@@ -151,7 +151,7 @@ bash scripts/solve_param.bash
 实际为一个列表，其元素为字典，表示每一张图片的识别结果，字典格式为：
 
 ```python
-dic{id:int, camera_id:int, corners:List[List[]]}
+dic{id:int, camera_id:int, corners:List[List[]], exposure:int}
 ```
 
 | 键 | 说明 |
@@ -159,6 +159,7 @@ dic{id:int, camera_id:int, corners:List[List[]]}
 | id | 帧id，不要求连续 |
 | camera_id | 相机序号 |
 | corners | 识别到的角点 |
+| exposure | 相机曝光参数 |
 
 一个正确的`corners.yaml`的例子如下，注意需要把它放在`output`文件夹下程序才能找到。
 

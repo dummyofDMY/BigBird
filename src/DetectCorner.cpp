@@ -38,6 +38,8 @@ int main(int argc, char** argv) {
     std::string corner_out_path = root_path + '/' + config["corner_out_path"].as<std::string>();
     int camera_count = config["camera_count"].as<int>();
     int rotation_flag = config["image_rotation"].as<int>();
+    std::vector<int> corner_size_vec = config["corner_size"].as<std::vector<int>>();
+    cv::Size corner_size(corner_size_vec[0], corner_size_vec[1]);
 
     std::vector<std::vector<int>> edge_count(camera_count, std::vector<int>(camera_count, 0));
 
@@ -48,16 +50,21 @@ int main(int argc, char** argv) {
         std::map<int, std::unique_ptr<Camera>> cameras;
         std::vector<int> camera_ids;
         int id_count = 0;
+        int min_fps = 1e6;
         for (int i = 0; i < camera_count; ++i) {
             int cam_id = config["camera_params"][i]["id"].as<int>();
             int width = config["camera_params"][i]["width"].as<int>();
             int height = config["camera_params"][i]["height"].as<int>();
             int fps = config["camera_params"][i]["fps"].as<int>();
+            int exposure = config["camera_params"][i]["exposure"].as<int>();
             std::string fourcc = config["camera_params"][i]["fourcc"].as<std::string>();
-            cameras.emplace(cam_id, std::make_unique<Camera>(cam_id, width, height, fps, fourcc, rotation_flag));
-            // camera_id_remap[cam_id] = id_count++;
+            cameras.emplace(cam_id, std::make_unique<Camera>(
+                cam_id, width, height, fps, fourcc, corner_size, exposure, rotation_flag));
             camera_ids.push_back(cam_id);
+            if (fps < min_fps)
+                min_fps = fps;
         }
+        int wait_time = 1000 / min_fps;
 
         std::sort(camera_ids.begin(), camera_ids.end());
         std::map<int, int> camera_id_remap;
@@ -72,6 +79,17 @@ int main(int argc, char** argv) {
         {
             if ('g' == key_input || 'G' == key_input) {
                 std::vector<DetectCorner> now_detected_corners;
+                // 计时，太过不同步将丢弃该帧
+                auto start_time = std::chrono::high_resolution_clock::now();
+                for (auto& cam_pair : cameras) {
+                    cam_pair.second->grab();
+                }
+                auto mid_time = std::chrono::high_resolution_clock::now();
+                int elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(mid_time - start_time).count();
+                if (elapsed_ms > wait_time) {
+                    std::cout << "抓取图像超时，丢弃该次抓取，耗时 " << elapsed_ms << " ms" << std::endl;
+                    continue;
+                }
                 for (auto& cam_pair : cameras) {
                     int camera_id = cam_pair.first;
                     std::vector<cv::Point2f> corners = cam_pair.second->get_corner();
@@ -108,36 +126,42 @@ int main(int argc, char** argv) {
             } else if ('q' == key_input || 'Q' == key_input) {
                 do_not_save = true;
                 break;
-            }
-            cv::Mat control_image(400, 500, CV_8UC3, cv::Scalar(50, 50, 50));
-            cv::putText(control_image, "Press 'g' to get corners", cv::Point(10, 50),
-                cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(255, 255, 255), 2);
-            cv::putText(control_image, "Press 'ESC' to exit", cv::Point(10, 80),
-                cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(255, 255, 255), 2);
-            cv::putText(control_image, "Press 'q' to exit without saving", cv::Point(10, 110),
-                cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(255, 255, 255), 2);
-            cv::putText(control_image, "Detected sets: " + std::to_string(now_id), cv::Point(10, 140),
-                cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(255, 255, 255), 2);
-            // 显示各相机边的检测次数
-            int pix_stride = 30;
-            cv::Point origin = cv::Point(10, 170);
-            // 绘制表头
-            for (int i = 0; i < camera_count; ++i) {
-                std::string text = "C" + std::to_string(i);
-                cv::putText(control_image, text, cv::Point(origin.x + pix_stride * (i + 1), origin.y),
-                    cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(255, 255, 255), 1);
-                cv::putText(control_image, text, cv::Point(origin.x, origin.y + pix_stride * (i + 1)),
-                    cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(255, 255, 255), 1);
-            }
-            for (int i = 0; i < camera_count; ++i) {
-                for (int j = i; j < camera_count; ++j) {
-                    std::string text = std::to_string(edge_count[i][j]);
-                    cv::putText(control_image, text, cv::Point(origin.x + pix_stride * (j + 1), origin.y + pix_stride * (i + 1)),
-                        cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 1);
+            } else {
+                cv::Mat control_image(400, 500, CV_8UC3, cv::Scalar(50, 50, 50));
+                cv::putText(control_image, "Press 'g' to get corners", cv::Point(10, 50),
+                    cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(255, 255, 255), 2);
+                cv::putText(control_image, "Press 'ESC' to exit", cv::Point(10, 80),
+                    cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(255, 255, 255), 2);
+                cv::putText(control_image, "Press 'q' to exit without saving", cv::Point(10, 110),
+                    cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(255, 255, 255), 2);
+                cv::putText(control_image, "Detected sets: " + std::to_string(now_id), cv::Point(10, 140),
+                    cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(255, 255, 255), 2);
+                // 显示各相机边的检测次数
+                int pix_stride = 30;
+                cv::Point origin = cv::Point(10, 170);
+                // 绘制表头
+                for (int i = 0; i < camera_count; ++i) {
+                    std::string text = "C" + std::to_string(i);
+                    cv::putText(control_image, text, cv::Point(origin.x + pix_stride * (i + 1), origin.y),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(255, 255, 255), 1);
+                    cv::putText(control_image, text, cv::Point(origin.x, origin.y + pix_stride * (i + 1)),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(255, 255, 255), 1);
+                }
+                for (int i = 0; i < camera_count; ++i) {
+                    for (int j = i; j < camera_count; ++j) {
+                        std::string text = std::to_string(edge_count[i][j]);
+                        cv::putText(control_image, text, cv::Point(origin.x + pix_stride * (j + 1), origin.y + pix_stride * (i + 1)),
+                            cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 1);
+                    }
+                }
+                cv::imshow("Control", control_image);
+
+                // 显示各相机的实时画面
+                for (auto& cam_pair : cameras) {
+                    cam_pair.second->visualize();
                 }
             }
-            cv::imshow("Control", control_image);
-            key_input = cv::waitKey(100);
+            key_input = cv::waitKey(11);
         }
         if (g_stop_requested.load()) {
             std::cout << "收到 SIGINT，正在保存当前检测数据..." << std::endl;
@@ -155,7 +179,6 @@ int main(int argc, char** argv) {
         cv::destroyAllWindows();
         
     } catch (const std::exception& e) {
-        // dump_detected_corners(detected_corners, corner_out_path);
         std::cerr << e.what() << std::endl;
     }
     return 0;

@@ -152,7 +152,7 @@ The camera startup parameters dictionary must contain the following keys: `id`, 
 The data is essentially a list. Each element is a dictionary representing the detection result for one image. The dictionary format is:
 
 ```python
-dic{id:int, camera_id:int, corners:List[List[]]}
+dic{id:int, camera_id:int, corners:List[List[]], exposure:int}
 ```
 
 | Key | Description |
@@ -160,6 +160,7 @@ dic{id:int, camera_id:int, corners:List[List[]]}
 | id | Frame ID (does not need to be sequential) |
 | camera_id | Camera index |
 | corners | Detected corners |
+| exposure | Exposure parameter |
 
 A correct example of `corners.yaml` is shown below. Note that it must be placed in the `output` folder for the program to find it.
 
