@@ -249,35 +249,55 @@ void rough_calib(const std::vector<DetectCorner>& detected_corners,
     }
 
     // 进行外参标定
-    // 是以其他相机为基准，相机0系到其他相机系的变换
-    cv::Mat cam1_matrix = camera_matrices[0];  // 相机0为“第一个相机”
-    cv::Mat dist1_coeffs = dist_coeffs_map[0];  // 官方文档说得到的是第一个相机到第二个相机的变换
-    for (int cam_id = 1; cam_id < camera_count; ++cam_id) {
-        cv::Mat cam2_matrix = camera_matrices[cam_id];
-        cv::Mat dist2_coeffs = dist_coeffs_map[cam_id];
+    std::map<int, int> father_list;  // 并查集
+    for (int cam_id = 0; cam_id < camera_count; ++cam_id) {
+        father_list[cam_id] = cam_id;
+    }
+    std::map<int, Eigen::Matrix4d> T_list;  // 根节点到该节点的变换
 
+    for (int cam_id = 1; cam_id < camera_count; ++cam_id) {
+        int father_id = 0;  // 该相机的根节点
         std::vector<std::vector<cv::Point3f>> obj_pts_vec;
         std::vector<std::vector<cv::Point2f>> img_pts_vec1, img_pts_vec2;
-        for (const auto& pair : all_corners[cam_id]) {
-            int frame_id = pair.first;
-            try {
-                const auto& corners2 = all_corners[0].at(frame_id);
-                obj_pts_vec.push_back(std::vector<cv::Point3f>(object_points.begin(), object_points.end()));
-                img_pts_vec1.push_back(corners2);
-                img_pts_vec2.push_back(pair.second);
-            } catch (const std::out_of_range&) {
-                // frame_id在cam_id中存在，但在cam2中不存在，跳过
-                continue;
+        for (father_id = 0; father_id < camera_count; ++father_id) {
+            if (father_list.at(father_id) == cam_id) {
+                continue;  // 避免造成回环
+            }
+            // 遍历本相机所有帧，找到在根节点相机中也存在的帧
+            for (const auto& pair : all_corners[cam_id]) {
+                int frame_id = pair.first;
+                try {
+                    const auto& corners2 = all_corners[father_id].at(frame_id);  // 在根节点找对应帧
+                    obj_pts_vec.push_back(std::vector<cv::Point3f>(object_points.begin(), object_points.end()));
+                    img_pts_vec1.push_back(corners2);
+                    img_pts_vec2.push_back(pair.second);
+                } catch (const std::out_of_range&) {
+                    // frame_id在cam_id中存在，但在ROOT_id中不存在，跳过
+                    continue;
+                }
+            }
+
+            if (obj_pts_vec.size() >= 1) {
+                break;
+            } else {
+                obj_pts_vec.clear();
+                img_pts_vec1.clear();
+                img_pts_vec2.clear();
             }
         }
-
         if (obj_pts_vec.size() < 1) {
-            std::cerr << "Camera 0 has no common frames with Camera " << cam_id << " for extrinsic calibration." << std::endl;
+            std::cerr << "Camera " << cam_id << " has no common frames with any other camera for extrinsic calibration." << std::endl;
             throw std::runtime_error("Insufficient common frames for extrinsic calibration.");
         } else {
-            std::cout << "Camera 0 and Camera " << cam_id << " have " << obj_pts_vec.size() << " common frames for extrinsic calibration." << std::endl;
+            std::cout << "Camera " << cam_id << " and Camera " << father_id << " have " << obj_pts_vec.size() << " common frames for extrinsic calibration." << std::endl;
         }
+        // father_list[cam_id] = father_id;
 
+        // 计算外参
+        cv::Mat cam1_matrix = camera_matrices[father_id];  // 根节点为“第一个相机”
+        cv::Mat dist1_coeffs = dist_coeffs_map[father_id];  // 官方文档说得到的是第一个相机到第二个相机的变换
+        cv::Mat cam2_matrix = camera_matrices[cam_id];
+        cv::Mat dist2_coeffs = dist_coeffs_map[cam_id];
         cv::Mat R, T, E, F;
         double rms = cv::stereoCalibrate(
             obj_pts_vec, img_pts_vec1, img_pts_vec2,
@@ -289,22 +309,32 @@ void rough_calib(const std::vector<DetectCorner>& detected_corners,
             cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 100, 1e-6)
         );
         std::cout << "Camera 0 to Camera " << cam_id << " extrinsic calibrated with RMS error = " << rms << std::endl;
+        // 构造4x4变换矩阵
+        Eigen::Matrix4d T_mat = Eigen::Matrix4d::Identity();
+        // R是3x3旋转矩阵，T是3x1平移
+        for (int i = 0; i < 3; ++i) {
+            T_mat(i, 3) = T.at<double>(i, 0);
+            for (int j = 0; j < 3; ++j) {
+                T_mat(i, j) = R.at<double>(i, j);
+            }
+        }
+        T_list[cam_id] = T_mat;
+        // 裁剪树，直接指向根节点
+        while (father_list.at(father_id) != father_id) {
+            T_list[cam_id] = T_list[cam_id] * T_list[father_id];  // T: root -> father -> now_cam
+            // father_list[cam_id] = father_list.at(father_id);
+            father_id = father_list.at(father_id);
+            std::cout << "Compressing tree for camera " << cam_id << ", new father is " << father_id << std::endl;
+        }
+        father_list[cam_id] = father_id;
+    }
+
+    for (int cam_id = 1; cam_id < camera_count; ++cam_id) {
         ExternalParam eparam;
         eparam.father_id = cam_id;
         eparam.child_id = 0;
-        // 构造4x4变换矩阵
-        eparam.T = Eigen::Matrix4d::Identity();
-        // R是3x3旋转矩阵，T是3x1平移
-        for (int i = 0; i < 3; ++i) {
-            eparam.T(i, 3) = T.at<double>(i, 0);
-            for (int j = 0; j < 3; ++j) {
-                eparam.T(i, j) = R.at<double>(i, j);
-            }
-        }
-        // eparam.T = eparam.T.inverse().eval();
+        eparam.T = T_list.at(cam_id);
         external_params.push_back(eparam);
-
-        
     }
 
     // 挑一帧把点重投影到camX系检查

@@ -3,8 +3,8 @@
 "calib_result_path": "output/calib_result.yaml"
 "corner_edge_length": 0.01
 "corner_size": [12, 7]  # [x, y]
-"optim_iterations": 200
-"remove_iter": 100  # 在该轮次移除外点
+"optim_iterations": 500
+"remove_iter": 200  # 在该轮次移除外点
 "meta_data_path": "output/meta_data.csv"
 "image_rotation": 0  # -1: 不旋转, 0: 顺时针90度, 1: 180度, 2: 逆时针90度
 "camera_params":
@@ -12,5 +12,5 @@
   - {id: 2, width: 800, height: 600, fps: 60, fourcc: "MJPG", exposure: 166}
   - {id: 4, width: 800, height: 600, fps: 60, fourcc: "MJPG", exposure: 166}
   - {id: 6, width: 800, height: 600, fps: 60, fourcc: "MJPG", exposure: 166}
-"delta": 5  # 鲁棒核函数分段参数
-"outlier_threshold": 5  # 外点阈值，平均每个像素的重投影误差
+"delta": 2  # 鲁棒核函数分段参数
+"outlier_threshold": 2  # 外点阈值，平均每个像素的重投影误差
